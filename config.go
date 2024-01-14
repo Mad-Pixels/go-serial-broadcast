@@ -1,6 +1,8 @@
 package go_serial_broadcast
 
 import (
+	"time"
+
 	"go.bug.st/serial"
 )
 
@@ -9,6 +11,7 @@ type config struct {
 	dataBits               int
 	incomeDeviceMsgPattern string
 	parity                 serial.Parity
+	watchDogTimeout        time.Duration
 	stopBits               serial.StopBits
 	initialStatusBits      *serial.ModemOutputBits
 }

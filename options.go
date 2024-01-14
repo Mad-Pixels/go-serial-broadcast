@@ -1,6 +1,8 @@
 package go_serial_broadcast
 
 import (
+	"time"
+
 	"go.bug.st/serial"
 )
 
@@ -46,5 +48,12 @@ func WithInitialStatusBits(v *serial.ModemOutputBits) func(*config) {
 func WithDeviceMsgPattern(regexpPattern string) func(*config) {
 	return func(c *config) {
 		c.incomeDeviceMsgPattern = regexpPattern
+	}
+}
+
+// WithWatchDogTimeout set timeout between serial ports scanning in seconds.
+func WithWatchDogTimeout(sec int) func(*config) {
+	return func(c *config) {
+		c.watchDogTimeout = time.Duration(sec)
 	}
 }

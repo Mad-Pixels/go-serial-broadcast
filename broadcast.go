@@ -3,6 +3,7 @@ package go_serial_broadcast
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/MadPixeles/go-serial-broadcast/identifier"
 	"github.com/MadPixeles/go-serial-broadcast/transfer"
@@ -17,27 +18,22 @@ func NewUART(path string, options ...Option) (transfer.Transfer, error) {
 	return transfer.New(path, cfg)
 }
 
-// NewUARTAutoDetectByDeviceSerialMsg initialize serial port.
 func NewUARTAutoDetectByDeviceSerialMsg(ctx context.Context, options ...Option) (transfer.Transfer, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	cfg := &config{}
+	cfg := &config{watchDogTimeout: 2}
 	for _, o := range options {
 		o(cfg)
 	}
 
-	i, err := identifier.New(cfg)
+	deviceIdentity, err := identifier.New(cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	var result transfer.Transfer
+	var devicePath string
 	for {
-		if result != nil {
-			return result, nil
+		if devicePath != "" {
+			break
 		}
-		ports, err := i.Ports()
+		ports, err := deviceIdentity.Ports()
 		if err != nil {
 			return nil, err
 		}
@@ -46,31 +42,41 @@ func NewUARTAutoDetectByDeviceSerialMsg(ctx context.Context, options ...Option) 
 		for _, port := range ports {
 			wg.Add(1)
 
-			go func(port string) {
+			go func(ctx context.Context, port string) {
 				defer wg.Done()
 
-				uart, err := NewUART(port)
-				if err != nil {
-					return
-				}
+				ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
+				defer cancel()
 
 				outCh := make(chan []byte, 1)
 				defer close(outCh)
 				errCh := make(chan error, 1)
 				defer close(errCh)
 
+				uart, err := NewUART(port)
+				if err != nil {
+					return
+				}
+				defer uart.Close()
+
 				go uart.ReadToCh(ctx, outCh, errCh)
 				for {
 					select {
 					case <-errCh:
+					case <-ctx.Done():
 						return
 					case out := <-outCh:
-						if i.Check(out) {
-							result = uart
+						if deviceIdentity.Check(out) {
+							devicePath = port
+							return
 						}
 					}
 				}
-			}(port)
+			}(ctx, port)
 		}
+		wg.Wait()
+		time.Sleep(time.Second * cfg.watchDogTimeout)
 	}
+
+	return NewUART(devicePath)
 }

@@ -9,6 +9,7 @@ import (
 
 type uart struct {
 	port serial.Port
+	path string
 }
 
 func newPort(path string, config Config) (*uart, error) {
@@ -25,12 +26,18 @@ func newPort(path string, config Config) (*uart, error) {
 	}
 	return &uart{
 		port: port,
+		path: path,
 	}, nil
+}
+
+// Path current serial port.
+func (u *uart) Path() string {
+	return u.path
 }
 
 // ReadToCh read data from serial port to []byte channel.
 func (u *uart) ReadToCh(ctx context.Context, outCh chan<- []byte, errCh chan<- error) {
-	buff := make([]byte, 1024)
+	buff := make([]byte, 256)
 	for {
 		select {
 		case <-ctx.Done():
@@ -41,20 +48,15 @@ func (u *uart) ReadToCh(ctx context.Context, outCh chan<- []byte, errCh chan<- e
 
 		n, err := u.port.Read(buff)
 		if err != nil {
-			select {
-			case errCh <- errors.Join(err, u.Close()):
-			default:
-				return
-			}
+			errCh <- errors.Join(err, u.Close())
+			return
 		}
 		if n == 0 {
 			return
 		}
-		select {
-		case outCh <- buff[:n]:
-		default:
-			return
-		}
+
+		outCh <- buff[:n]
+		u.ResetInputBuffer()
 	}
 }
 
@@ -62,7 +64,7 @@ func (u *uart) ReadToCh(ctx context.Context, outCh chan<- []byte, errCh chan<- e
 func (u *uart) Write(msg []byte) (int, error) {
 	n, err := u.port.Write(msg)
 	defer func() {
-		err = errors.Join(err, u.port.Drain())
+		err = errors.Join(err, u.port.Drain(), u.port.ResetOutputBuffer())
 	}()
 	return n, err
 }

@@ -10,6 +10,8 @@ type Transfer interface {
 	Write([]byte) (int, error)
 	ResetOutputBuffer() error
 	ResetInputBuffer() error
+	Close() error
+	Path() string
 }
 
 // New initialize Transfer object.
