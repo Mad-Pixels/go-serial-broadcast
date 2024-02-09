@@ -1,82 +1,126 @@
 package go_serial_broadcast
 
 import (
-	"context"
+	"bytes"
+	"fmt"
+	"io"
+	"log"
+	"strings"
 	"sync"
-	"time"
 
-	"github.com/MadPixeles/go-serial-broadcast/identifier"
-	"github.com/MadPixeles/go-serial-broadcast/transfer"
+	"github.com/MadPixeles/go-serial-broadcast/port"
+	"github.com/MadPixeles/go-serial-broadcast/verification"
 )
 
-// NewUART initialize serial port object.
-func NewUART(path string, options ...Option) (transfer.Transfer, error) {
-	cfg := &config{}
-	for _, o := range options {
-		o(cfg)
-	}
-	return transfer.New(path, cfg)
+type MessageHandler func(msg string) error
+
+// Broadcast ...
+type Broadcast struct {
+	verification verification.Interface
+	serial       port.Interface
+	buffer       bytes.Buffer
+	messages     chan string
+	bufferMutex  sync.Mutex
+
+	customHandlers map[string]MessageHandler
 }
 
-func NewUARTAutoDetectByDeviceSerialMsg(ctx context.Context, options ...Option) (transfer.Transfer, error) {
-	cfg := &config{watchDogTimeout: 2}
-	for _, o := range options {
-		o(cfg)
-	}
-
-	deviceIdentity, err := identifier.New(cfg)
+// NewBroadcast ...
+func NewBroadcast(verifyMethod verification.Interface) (*Broadcast, error) {
+	serial, err := port.NewPort()
 	if err != nil {
 		return nil, err
 	}
-	var devicePath string
+	return &Broadcast{
+		verification: verifyMethod,
+		serial:       serial,
+		messages:     make(chan string, 100),
+		buffer:       bytes.Buffer{},
+	}, nil
+}
+
+func (b *Broadcast) Read() {
+	tmp := make([]byte, 1024)
 	for {
-		if devicePath != "" {
+		n, err := b.serial.Read(tmp)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Println("Error reading from serial port: %s", err)
+			}
 			break
 		}
-		ports, err := deviceIdentity.Ports()
-		if err != nil {
-			return nil, err
+		if n > 0 {
+			b.bufferMutex.Lock()
+			b.buffer.Write(tmp[:n])
+			b.bufferMutex.Unlock()
+			b.processMessages()
 		}
-
-		var wg sync.WaitGroup
-		for _, port := range ports {
-			wg.Add(1)
-
-			go func(ctx context.Context, port string) {
-				defer wg.Done()
-
-				ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
-				defer cancel()
-
-				outCh := make(chan []byte, 1)
-				defer close(outCh)
-				errCh := make(chan error, 1)
-				defer close(errCh)
-
-				uart, err := NewUART(port)
-				if err != nil {
-					return
-				}
-				defer uart.Close()
-
-				go uart.ReadToCh(ctx, outCh, errCh)
-				for {
-					select {
-					case <-errCh:
-					case <-ctx.Done():
-						return
-					case out := <-outCh:
-						if deviceIdentity.Check(out) {
-							devicePath = port
-							return
-						}
-					}
-				}
-			}(ctx, port)
-		}
-		wg.Wait()
-		time.Sleep(time.Second * cfg.watchDogTimeout)
 	}
+}
 
-	return NewUART(devicePath)
+func (b *Broadcast) processMessages() {
+	for {
+		b.bufferMutex.Lock()
+		msg, err := b.buffer.ReadString('\n')
+		b.bufferMutex.Unlock()
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("Error processing messages: %s", err)
+			}
+			if msg != "" {
+				b.bufferMutex.Lock()
+				b.buffer.WriteString(msg)
+				b.bufferMutex.Unlock()
+			}
+			break
+		}
+		b.messages <- msg
+	}
+}
+
+func (b *Broadcast) AddHandler(command string, handler MessageHandler) {
+	if b.customHandlers == nil {
+		b.customHandlers = make(map[string]MessageHandler)
+	}
+	b.customHandlers[command] = handler
+}
+
+//func (b *Broadcast) processMessages() {
+//	for {
+//		msg, err := b.buffer.ReadString('\n')
+//		if err != nil {
+//			if err == io.EOF {
+//				b.buffer.WriteString(msg)
+//			} else {
+//				log.Printf("Error processing messages: %s", err)
+//			}
+//			break
+//		}
+//		fmt.Println("Received message:", msg)
+//	}
+//}
+
+func (b *Broadcast) HandleMessages() {
+	for msg := range b.messages {
+		trimmedMsg := strings.TrimSuffix(msg, "\n")
+		// Обработка сообщения
+		switch {
+		case msg == "command1\n":
+			fmt.Println("Handling command1")
+			// Ваш код для обработки command1
+		case msg == "command2\n":
+			fmt.Println("Handling command2")
+			// Ваш код для обработки command2
+		default:
+			if handler, exists := b.customHandlers[trimmedMsg]; exists {
+				err := handler(msg)
+				if err != nil {
+					fmt.Printf("Error handling custom command '%s': %v\n", trimmedMsg, err)
+				}
+			} else {
+				fmt.Println("Unknown command:", msg)
+			}
+		}
+
+	}
 }
