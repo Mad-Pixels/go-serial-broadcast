@@ -8,7 +8,7 @@ import (
 	"time"
 
 	go_serial_broadcast "github.com/MadPixeles/go-serial-broadcast"
-	"github.com/MadPixeles/go-serial-broadcast/verification"
+	"github.com/MadPixeles/go-serial-broadcast/middleware"
 )
 
 func printStats() {
@@ -42,7 +42,7 @@ func main() {
 	}()
 
 	//bcast
-	v, _ := verification.NewByMask([]byte{}, "*")
+	v, _ := middleware.NewVerifyByMask([]byte{}, "*")
 	bcast, err := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, 4, v)
 	if err != nil {
 		log.Fatal(err)
@@ -53,7 +53,7 @@ func main() {
 	})
 	rand.Seed(time.Now().UnixNano())
 	bcast.SetDefaultHandler(func(msg string) error {
-		randomInt := rand.Intn(4)
+		randomInt := rand.Intn(20)
 		time.Sleep(time.Second * time.Duration(randomInt))
 		fmt.Println(msg)
 		//
@@ -61,7 +61,7 @@ func main() {
 		return nil
 	})
 	go bcast.Read(1024)
-	_ = bcast.HandleMessages()
+	//_ = bcast.HandleMessages()
 
 	select {}
 }

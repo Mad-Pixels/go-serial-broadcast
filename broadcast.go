@@ -7,8 +7,8 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/MadPixeles/go-serial-broadcast/middleware"
 	"github.com/MadPixeles/go-serial-broadcast/port"
-	"github.com/MadPixeles/go-serial-broadcast/verification"
 )
 
 // MessageHandler defines a function signature for handling messages received from the serial port.
@@ -23,10 +23,10 @@ type Broadcast struct {
 	bufferMutex sync.Mutex
 
 	// Abstraction over a serial port, allowing for reading from and writing to the serial device.
-	serial port.Interface
+	serial port.Port
 
-	// Provides an interface for verifying the integrity or validity of received messages.
-	verification verification.Interface
+	// Provides an interface for middleware process.
+	middleware middleware.Middleware
 
 	// A channel for dispatching processed messages to be handled by registered handlers.
 	messages chan []byte
@@ -45,7 +45,7 @@ type Broadcast struct {
 }
 
 // NewBroadcast creates a new Broadcast instance with the specified serial port path and rate.
-func NewBroadcast(path string, rate, flows int, verifyMethod verification.Interface) (*Broadcast, error) {
+func NewBroadcast(path string, rate, flows int, middleware middleware.Middleware) (*Broadcast, error) {
 	serial, err := port.NewPort(path, rate)
 	if err != nil {
 		return nil, fmt.Errorf("broadcast error: %w", err)
@@ -55,7 +55,7 @@ func NewBroadcast(path string, rate, flows int, verifyMethod verification.Interf
 		semaphore:      make(chan struct{}, flows),
 		messages:       make(chan []byte, flows*3),
 		buffer:         bytes.Buffer{},
-		verification:   verifyMethod,
+		middleware:     middleware,
 		serial:         serial,
 	}, nil
 }
@@ -147,10 +147,7 @@ func (b *Broadcast) HandleMessages() error {
 //
 // Usage example:
 //
-//	err := broadcastInstance.Read(1024) // Initiates reading from the serial port with a 1024-byte buffer.
-//	if err != nil {
-//	    log.Fatalf("Failed to read from serial port: %v", err)
-//	}
+//	go broadcastInstance.Read(1024) // Initiates reading from the serial port with a 1024-byte buffer.
 //
 // Note: It's recommended to run Read in its own goroutine to facilitate continuous reading and processing of serial data.
 func (b *Broadcast) Read(bufferSize int) error {

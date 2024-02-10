@@ -1,15 +1,15 @@
-package verification
+package middleware
 
 import (
 	"regexp"
 )
 
-type Interface interface {
+type Middleware interface {
 	Check([]byte) bool
 	Key() []byte
 }
 
-func NewByMask(serialKey []byte, pattern string) (Interface, error) {
+func NewVerifyByMask(serialKey []byte, pattern string) (Middleware, error) {
 	p, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, err

@@ -1,9 +1,9 @@
 package port
 
-// Interface defines a contract for serial port operations.
+// Port defines a contract for serial port operations.
 // It abstracts the underlying implementation details of serial port communication,
 // providing a simplified view for transmitting and receiving data, as well as managing the port's lifecycle.
-type Interface interface {
+type Port interface {
 	// Write sends data to the serial port.
 	// It takes a slice of bytes as input, which represents the data to be transmitted.
 	// The method returns the number of bytes successfully written and any error encountered during the operation.
@@ -25,11 +25,11 @@ type Interface interface {
 }
 
 // NewPort initialize serial port object.
-func NewPort(path string, rate int) (Interface, error) {
+func NewPort(path string, rate int) (Port, error) {
 	return newSerial(path, rate, 8, 0, 0)
 }
 
 // NewPortMock return serial mock object.
-func NewPortMock() Interface {
+func NewPortMock() Port {
 	return newSerialMock()
 }

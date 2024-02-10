@@ -13,7 +13,7 @@ type serial struct {
 	path string
 }
 
-func newSerial(path string, rate, dataBits, stopBits, parity int) (Interface, error) {
+func newSerial(path string, rate, dataBits, stopBits, parity int) (Port, error) {
 	mode := &bugst.Mode{
 		StopBits:          bugst.StopBits(stopBits),
 		Parity:            bugst.Parity(parity),

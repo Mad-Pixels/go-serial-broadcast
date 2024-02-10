@@ -1,4 +1,4 @@
-package verification
+package middleware
 
 import (
 	"regexp"

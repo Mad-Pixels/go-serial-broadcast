@@ -8,7 +8,7 @@ type serialMock struct {
 	mock.Mock
 }
 
-func newSerialMock() Interface {
+func newSerialMock() Port {
 	return &serialMock{}
 }
 
