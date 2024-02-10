@@ -28,8 +28,3 @@ type Port interface {
 func NewPort(path string, rate int) (Port, error) {
 	return newSerial(path, rate, 8, 0, 0)
 }
-
-// NewPortMock return serial mock object.
-func NewPortMock() Port {
-	return newSerialMock()
-}
