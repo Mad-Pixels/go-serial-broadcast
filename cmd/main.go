@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"runtime"
 	"time"
 
@@ -42,7 +43,7 @@ func main() {
 
 	//bcast
 	v, _ := verification.NewByMask([]byte{}, "*")
-	bcast, err := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, v)
+	bcast, err := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, 4, v)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,9 +51,13 @@ func main() {
 		fmt.Println("Custom command received:", msg)
 		return nil
 	})
+	rand.Seed(time.Now().UnixNano())
 	bcast.SetDefaultHandler(func(msg string) error {
+		randomInt := rand.Intn(2)
+		time.Sleep(time.Second * time.Duration(randomInt))
 		fmt.Println(msg)
-		//time.Sleep(time.Second * 10)
+		//
+		//
 		return nil
 	})
 	go bcast.Read(1024)

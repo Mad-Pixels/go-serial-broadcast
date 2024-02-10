@@ -45,15 +45,15 @@ type Broadcast struct {
 }
 
 // NewBroadcast creates a new Broadcast instance with the specified serial port path and rate.
-func NewBroadcast(path string, rate int, verifyMethod verification.Interface) (*Broadcast, error) {
+func NewBroadcast(path string, rate, flows int, verifyMethod verification.Interface) (*Broadcast, error) {
 	serial, err := port.NewPort(path, rate)
 	if err != nil {
 		return nil, fmt.Errorf("broadcast error: %w", err)
 	}
 	return &Broadcast{
 		customHandlers: make(map[string]MessageHandler),
-		semaphore:      make(chan struct{}, 4),
-		messages:       make(chan []byte, 10),
+		semaphore:      make(chan struct{}, flows),
+		messages:       make(chan []byte, flows*3),
 		buffer:         bytes.Buffer{},
 		verification:   verifyMethod,
 		serial:         serial,
