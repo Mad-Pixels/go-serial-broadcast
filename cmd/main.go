@@ -3,10 +3,22 @@ package main
 import (
 	"fmt"
 	"log"
+	"runtime"
+	"time"
 
 	go_serial_broadcast "github.com/MadPixeles/go-serial-broadcast"
 	"github.com/MadPixeles/go-serial-broadcast/verification"
 )
+
+func printStats() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
+	fmt.Printf("\tTotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
+	fmt.Printf("\tSys = %v MiB", m.Sys/1024/1024)
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+	fmt.Printf("\tGoroutines = %d\n", runtime.NumGoroutine())
+}
 
 func main() {
 	//p, err := port.NewPort()
@@ -21,9 +33,16 @@ func main() {
 	//	fmt.Println(string(b))
 	//}
 
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			printStats()
+		}
+	}()
+
 	//bcast
 	v, _ := verification.NewByMask([]byte{}, "*")
-	bcast, err := go_serial_broadcast.NewBroadcast(v)
+	bcast, err := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, v)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -31,8 +50,13 @@ func main() {
 		fmt.Println("Custom command received:", msg)
 		return nil
 	})
-	go bcast.Read()
-	go bcast.HandleMessages()
+	bcast.SetDefaultHandler(func(msg string) error {
+		fmt.Println(msg)
+		//time.Sleep(time.Second * 10)
+		return nil
+	})
+	go bcast.Read(1024)
+	_ = bcast.HandleMessages()
 
 	select {}
 }

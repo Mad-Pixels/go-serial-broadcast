@@ -4,48 +4,162 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
-	"strings"
 	"sync"
+	"unsafe"
 
 	"github.com/MadPixeles/go-serial-broadcast/port"
 	"github.com/MadPixeles/go-serial-broadcast/verification"
 )
 
+// MessageHandler defines a function signature for handling messages received from the serial port.
+// It takes a message as a string and returns an error if the handling fails.
 type MessageHandler func(msg string) error
 
-// Broadcast ...
+// Broadcast manages serial communication, parsing and routing messages to appropriate handlers.
+// It uses a mutex to safely access a buffer that stores incoming serial data until it can be processed.
+// Messages are then dispatched based on predefined handlers for specific commands or patterns.
 type Broadcast struct {
-	verification verification.Interface
-	serial       port.Interface
-	buffer       bytes.Buffer
-	messages     chan string
-	bufferMutex  sync.Mutex
+	// Protects access to the internal buffer, ensuring thread-safe operations.
+	bufferMutex sync.Mutex
 
+	// Abstraction over a serial port, allowing for reading from and writing to the serial device.
+	serial port.Interface
+
+	// Provides an interface for verifying the integrity or validity of received messages.
+	verification verification.Interface
+
+	// A channel for dispatching processed messages to be handled by registered handlers.
+	messages chan []byte
+
+	// A channel for control numb of goroutines.
+	semaphore chan struct{}
+
+	// Maps command strings or message prefixes to their corresponding handlers.
 	customHandlers map[string]MessageHandler
+
+	// A fallback handler used when no specific handler is found for a message.
+	defaultHandler MessageHandler
+
+	// Temporarily stores incoming data from the serial port until it can be processed.
+	buffer bytes.Buffer
 }
 
-// NewBroadcast ...
-func NewBroadcast(verifyMethod verification.Interface) (*Broadcast, error) {
-	serial, err := port.NewPort()
+// NewBroadcast creates a new Broadcast instance with the specified serial port path and rate.
+func NewBroadcast(path string, rate int, verifyMethod verification.Interface) (*Broadcast, error) {
+	serial, err := port.NewPort(path, rate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("broadcast error: %w", err)
 	}
 	return &Broadcast{
-		verification: verifyMethod,
-		serial:       serial,
-		messages:     make(chan string, 100),
-		buffer:       bytes.Buffer{},
+		customHandlers: make(map[string]MessageHandler),
+		semaphore:      make(chan struct{}, 4),
+		messages:       make(chan []byte, 10),
+		buffer:         bytes.Buffer{},
+		verification:   verifyMethod,
+		serial:         serial,
 	}, nil
 }
 
-func (b *Broadcast) Read() {
-	tmp := make([]byte, 1024)
+// AddHandler registers a custom handler for messages starting with a specific key (without spaces).
+// This method enables the Broadcast instance to dynamically handle a variety of message types
+// received through the serial port. Associating a handler with a unique prefix allows the application
+// to categorize and process different messages based on their initial sequence or command keyword.
+// The corresponding handler is invoked to process any message that begins with the matched prefix.
+//
+// Parameters:
+//   - prefix: A string that uniquely identifies the prefix of the messages the handler is designed to process.
+//     This could be a specific command keyword or any identifiable starting sequence within the message data.
+//   - handler: A MessageHandler function designated to process messages that match the prefix.
+//     The handler must accept a message as a slice of bytes and return an error if the processing encounters any issues.
+//
+// Usage example:
+//
+//	b.AddHandler("CMD1:", func(msg []byte) error {
+//	    // Logic to handle the message
+//	    return nil
+//	})
+func (b *Broadcast) AddHandler(key string, handler MessageHandler) {
+	b.customHandlers[key] = handler
+}
+
+// SetDefaultHandler sets a default handler that is called when no specific handler
+// is found for a message. This allows for a fallback processing mechanism for messages
+// that do not match any of the predefined command patterns. The default handler
+// can be used to log unhandled messages, perform cleanup, or even as a catch-all
+// processor for generic message handling.
+//
+// Parameters:
+//   - handler: A MessageHandler function to be used as the default handler. It should
+//     accept a message as a string and return an error if processing fails.
+//
+// Usage example:
+//
+//	b.SetDefaultHandler(func(string) error {
+//	    fmt.Println("Default handler received message:", msg)
+//	    return nil
+//	})
+func (b *Broadcast) SetDefaultHandler(handler MessageHandler) {
+	b.defaultHandler = handler
+}
+
+// HandleMessages listens for incoming messages on the messages channel and dispatches
+// them to the appropriate handlers based on their content. It uses the first part of the
+// message, separated by a space, as a key to identify the correct handler from the
+// customHandlers map.
+//
+// If no specific handler is found for a key, the default handler is invoked (if it has been set).
+//
+// Usage example:
+//
+//	err := b.HandleMessages()
+//	if err != nil {
+//	    log.Fatalf("Error handling messages: %v", err)
+//	}
+func (b *Broadcast) HandleMessages() error {
+	for msg := range b.messages {
+		b.semaphore <- struct{}{}
+
+		go func(msg []byte) {
+			defer func() { <-b.semaphore }()
+
+			key := bytes.SplitN(msg, []byte(" "), 2)
+			handler, ok := b.customHandlers[*(*string)(unsafe.Pointer(&key[0]))]
+			if !ok {
+				handler = b.defaultHandler
+			}
+			if handler != nil {
+				if err := handler(*(*string)(unsafe.Pointer(&msg))); err != nil {
+					//return fmt.Errorf(
+					//	"broadcast handler error with key %s, got %w",
+					//	*(*string)(unsafe.Pointer(&key[0])),
+					//	err,
+					//)
+				}
+			}
+		}(msg)
+	}
+	return nil
+}
+
+// Read continuously reads from the serial port into an internal buffer.
+// Triggers the asynchronous processing of messages and execute MessageHandler functions.
+// The method exits gracefully upon encountering the io.EOF error, signaling the end of the data stream.
+//
+// Usage example:
+//
+//	err := broadcastInstance.Read(1024) // Initiates reading from the serial port with a 1024-byte buffer.
+//	if err != nil {
+//	    log.Fatalf("Failed to read from serial port: %v", err)
+//	}
+//
+// Note: It's recommended to run Read in its own goroutine to facilitate continuous reading and processing of serial data.
+func (b *Broadcast) Read(bufferSize int) error {
+	tmp := make([]byte, bufferSize)
 	for {
 		n, err := b.serial.Read(tmp)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Println("Error reading from serial port: %s", err)
+				return fmt.Errorf("broadcast error: %w", err)
 			}
 			break
 		}
@@ -53,74 +167,27 @@ func (b *Broadcast) Read() {
 			b.bufferMutex.Lock()
 			b.buffer.Write(tmp[:n])
 			b.bufferMutex.Unlock()
+
 			b.processMessages()
 		}
 	}
+	return nil
 }
 
 func (b *Broadcast) processMessages() {
 	for {
 		b.bufferMutex.Lock()
-		msg, err := b.buffer.ReadString('\n')
+		index := bytes.IndexByte(b.buffer.Bytes(), '\n')
+		if index != -1 {
+			fromBuffer := b.buffer.Next(index + 1)
+			msg := make([]byte, index)
+			copy(msg, fromBuffer[:index])
+
+			b.bufferMutex.Unlock()
+			b.messages <- msg
+			continue
+		}
 		b.bufferMutex.Unlock()
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error processing messages: %s", err)
-			}
-			if msg != "" {
-				b.bufferMutex.Lock()
-				b.buffer.WriteString(msg)
-				b.bufferMutex.Unlock()
-			}
-			break
-		}
-		b.messages <- msg
-	}
-}
-
-func (b *Broadcast) AddHandler(command string, handler MessageHandler) {
-	if b.customHandlers == nil {
-		b.customHandlers = make(map[string]MessageHandler)
-	}
-	b.customHandlers[command] = handler
-}
-
-//func (b *Broadcast) processMessages() {
-//	for {
-//		msg, err := b.buffer.ReadString('\n')
-//		if err != nil {
-//			if err == io.EOF {
-//				b.buffer.WriteString(msg)
-//			} else {
-//				log.Printf("Error processing messages: %s", err)
-//			}
-//			break
-//		}
-//		fmt.Println("Received message:", msg)
-//	}
-//}
-
-func (b *Broadcast) HandleMessages() {
-	for msg := range b.messages {
-		trimmedMsg := strings.TrimSuffix(msg, "\n")
-		// Обработка сообщения
-		switch {
-		case msg == "command1\n":
-			fmt.Println("Handling command1")
-			// Ваш код для обработки command1
-		case msg == "command2\n":
-			fmt.Println("Handling command2")
-			// Ваш код для обработки command2
-		default:
-			if handler, exists := b.customHandlers[trimmedMsg]; exists {
-				err := handler(msg)
-				if err != nil {
-					fmt.Printf("Error handling custom command '%s': %v\n", trimmedMsg, err)
-				}
-			} else {
-				fmt.Println("Unknown command:", msg)
-			}
-		}
-
+		break
 	}
 }
