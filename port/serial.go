@@ -37,9 +37,9 @@ func (s *serial) Read(buf []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.port.ResetInputBuffer(); err != nil {
-		return 0, fmt.Errorf("fail to reset buffer on serial port %s, got: %w", s.path, err)
-	}
+	//if err := s.port.ResetInputBuffer(); err != nil {
+	//	return 0, fmt.Errorf("fail to reset buffer on serial port %s, got: %w", s.path, err)
+	//}
 
 	n, err := s.port.Read(buf)
 	if err != nil {

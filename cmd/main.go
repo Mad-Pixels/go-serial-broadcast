@@ -53,7 +53,7 @@ func main() {
 	})
 	rand.Seed(time.Now().UnixNano())
 	bcast.SetDefaultHandler(func(msg string) error {
-		randomInt := rand.Intn(2)
+		randomInt := rand.Intn(4)
 		time.Sleep(time.Second * time.Duration(randomInt))
 		fmt.Println(msg)
 		//
