@@ -7,7 +7,6 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/MadPixeles/go-serial-broadcast/middleware"
 	"github.com/MadPixeles/go-serial-broadcast/port"
 )
 
@@ -24,9 +23,6 @@ type Broadcast struct {
 
 	// Abstraction over a serial port, allowing for reading from and writing to the serial device.
 	serial port.Port
-
-	// Provides an interface for middleware process.
-	middleware middleware.Middleware
 
 	// A channel for dispatching processed messages to be handled by registered handlers.
 	messages chan []byte
@@ -45,7 +41,7 @@ type Broadcast struct {
 }
 
 // NewBroadcast creates a new Broadcast instance with the specified serial port path and rate.
-func NewBroadcast(path string, rate, flows int, middleware middleware.Middleware) (*Broadcast, error) {
+func NewBroadcast(path string, rate, flows int) (*Broadcast, error) {
 	serial, err := port.NewPort(path, rate)
 	if err != nil {
 		return nil, fmt.Errorf("broadcast error: %w", err)
@@ -55,7 +51,6 @@ func NewBroadcast(path string, rate, flows int, middleware middleware.Middleware
 		semaphore:      make(chan struct{}, flows),
 		messages:       make(chan []byte, flows*3),
 		buffer:         bytes.Buffer{},
-		middleware:     middleware,
 		serial:         serial,
 	}, nil
 }
