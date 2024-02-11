@@ -8,7 +8,6 @@ import (
 	"time"
 
 	go_serial_broadcast "github.com/MadPixeles/go-serial-broadcast"
-	"github.com/MadPixeles/go-serial-broadcast/middleware"
 )
 
 func printStats() {
@@ -42,8 +41,7 @@ func main() {
 	}()
 
 	//bcast
-	v, _ := middleware.NewVerifyByMask([]byte{}, "*")
-	bcast, err := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, 4, v)
+	bcast, err := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, 4)
 	if err != nil {
 		log.Fatal(err)
 	}
