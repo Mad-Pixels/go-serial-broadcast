@@ -59,7 +59,7 @@ func main() {
 		return nil
 	})
 	go bcast.Read(1024)
-	_ = bcast.HandleMessages()
+	go bcast.HandleMessages(nil)
 
 	select {}
 }

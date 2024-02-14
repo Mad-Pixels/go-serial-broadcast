@@ -1,9 +1,9 @@
 package port
 
 import (
-	"fmt"
 	"sync"
 
+	"github.com/pkg/errors"
 	bugst "go.bug.st/serial"
 )
 
@@ -13,6 +13,7 @@ type serial struct {
 	path string
 }
 
+// return Port object based on "go.bug.st/serial" pkg.
 func newSerial(path string, rate, dataBits, stopBits, parity int) (Port, error) {
 	mode := &bugst.Mode{
 		StopBits:          bugst.StopBits(stopBits),
@@ -23,7 +24,7 @@ func newSerial(path string, rate, dataBits, stopBits, parity int) (Port, error) 
 	}
 	port, err := bugst.Open(path, mode)
 	if err != nil {
-		return nil, fmt.Errorf("fail initialize serial port %s, got: %w", path, err)
+		return nil, errors.Wrapf(err, "fail initialize serial port %s", path)
 	}
 	return &serial{
 		mu:   sync.Mutex{},
@@ -37,13 +38,9 @@ func (s *serial) Read(buf []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	//if err := s.port.ResetInputBuffer(); err != nil {
-	//	return 0, fmt.Errorf("fail to reset buffer on serial port %s, got: %w", s.path, err)
-	//}
-
 	n, err := s.port.Read(buf)
 	if err != nil {
-		return n, fmt.Errorf("fail reading from serial port %s, got: %w", s.path, err)
+		return n, errors.Wrapf(err, "fail reading from serial port %s, got", s.path)
 	}
 	return n, nil
 }
@@ -54,16 +51,15 @@ func (s *serial) Write(data []byte) (int, error) {
 	defer s.mu.Unlock()
 
 	if err := s.port.ResetOutputBuffer(); err != nil {
-		return 0, fmt.Errorf("fail to reset output buffer on serial port %s, got: %w", s.path, err)
+		return 0, errors.Wrapf(err, "fail to reset output buffer on serial port %s, got", s.path)
 	}
 
 	n, err := s.port.Write(data)
 	if err != nil {
-		return n, fmt.Errorf("fail writing to serial port %s, got: %w", s.path, err)
+		return n, errors.Wrapf(err, "fail writing to serial port %s, got", s.path)
 	}
-
 	if err := s.port.Drain(); err != nil {
-		return n, fmt.Errorf("fail to drain serial port %s, got: %w", s.path, err)
+		return n, errors.Wrapf(err, "fail to drain serial port %s, got", s.path)
 	}
 	return n, nil
 }
@@ -71,7 +67,7 @@ func (s *serial) Write(data []byte) (int, error) {
 // Close the serial port.
 func (s *serial) Close() error {
 	if err := s.port.Close(); err != nil {
-		return fmt.Errorf("fail to close serial port %s, got: %w", s.path, err)
+		return errors.Wrapf(err, "fail to close serial port %s, got", s.path)
 	}
 	return nil
 }
