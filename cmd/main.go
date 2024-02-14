@@ -61,5 +61,14 @@ func main() {
 	go bcast.Read(1024)
 	go bcast.HandleMessages(nil)
 
+	go func() {
+		for {
+			randomInt := rand.Intn(100)
+			ff := fmt.Sprintf("Hi!, %v", randomInt)
+			bcast.Write(ff)
+			time.Sleep(time.Second * 1)
+		}
+
+	}()
 	select {}
 }

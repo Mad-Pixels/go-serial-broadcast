@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"reflect"
 	"sync"
 	"unsafe"
 
@@ -174,4 +175,12 @@ func (b *Broadcast) Read(bufferSize int) error {
 		}
 	}
 	return nil
+}
+
+func (b *Broadcast) Write(msg string) {
+	sh := (*reflect.StringHeader)(unsafe.Pointer(&msg))
+	slice := (*[1 << 30]byte)(unsafe.Pointer(sh.Data))[:sh.Len:sh.Len]
+
+	_, _ = b.serial.Write(slice)
+	_, _ = b.serial.Write([]byte{'\n'})
 }
