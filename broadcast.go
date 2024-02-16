@@ -71,7 +71,8 @@ func (b *Broadcast) AddHandler(key string, handler MessageHandler) {
 //
 // Usage example:
 //
-//	b.SetDefaultHandler(func(string) error {
+//	bcast, _ := go_serial_broadcast.NewBroadcast("/dev/tty.usbserial-110", 9600, 4)
+//	bcast.SetDefaultHandler(func(string) error {
 //	    fmt.Println("Default handler received message:", msg)
 //	    return nil
 //	})
@@ -91,12 +92,12 @@ func (b *Broadcast) SetDefaultHandler(handler MessageHandler) {
 //		return nil
 //	})
 //
-//	b.HandleMessages(nil)
+//	bcast.HandleMessages(nil)
 //	// or
-//	go b.HandleMessages(nil)
+//	go bcast.HandleMessages(nil)
 //	// or
 //	errCh := make(chan err)
-//	go b.HandleMessages(errCh)
+//	go bcast.HandleMessages(errCh)
 //	for {
 //		select:
 //		case e := <-errCh:
@@ -177,10 +178,10 @@ func (b *Broadcast) Read(bufferSize int) error {
 	return nil
 }
 
-func (b *Broadcast) Write(msg string) {
+// Write data to the serial port.
+func (b *Broadcast) Write(msg string) (int, error) {
 	sh := (*reflect.StringHeader)(unsafe.Pointer(&msg))
 	slice := (*[1 << 30]byte)(unsafe.Pointer(sh.Data))[:sh.Len:sh.Len]
 
-	_, _ = b.serial.Write(slice)
-	_, _ = b.serial.Write([]byte{'\n'})
+	return b.serial.Write(append(slice, '\n'))
 }
